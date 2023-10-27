@@ -5,6 +5,7 @@ use ethers::{
     providers::Middleware,
     types::{Log, H160, H256, U256},
 };
+use serde::{Deserialize, Serialize};
 
 use crate::errors::{AMMError, ArithmeticError, EventLogError, SwapSimulationError};
 
@@ -29,4 +30,9 @@ pub trait AutomatedMarketMaker {
         amount_in: U256,
     ) -> Result<U256, SwapSimulationError>;
     fn get_token_out(&self, token_in: H160) -> H160;
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum AMM {
+    UniswapV2Pool(),
 }
