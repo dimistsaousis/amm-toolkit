@@ -1,5 +1,5 @@
 pub mod batch_request;
-mod factory;
+pub mod factory;
 use std::sync::Arc;
 
 use ethers::{
