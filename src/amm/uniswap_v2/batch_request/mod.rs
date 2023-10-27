@@ -3,7 +3,7 @@ use std::sync::Arc;
 use ethers::{
     abi::{ParamType, Token},
     providers::Middleware,
-    types::{Bytes, H160},
+    types::{Bytes, H160, U256},
 };
 
 use crate::errors::AMMError;
@@ -14,7 +14,9 @@ use ethers::prelude::abigen;
 
 abigen!(
     IGetUniswapV2PoolDataBatchRequest,
-    "src/amm/uniswap_v2/batch_request/GetUniswapV2PoolDataBatchRequest.json"
+    "src/amm/uniswap_v2/batch_request/GetUniswapV2PoolDataBatchRequest.json";
+    IGetUniswapV2PairsBatchRequest,
+    "src/amm/uniswap_v2/batch_request/GetUniswapV2PairsBatchRequest.json",
 );
 
 pub async fn get_uniswap_v2_pool_data_batch_request<M: Middleware>(
@@ -129,4 +131,44 @@ mod tests {
             Err(e) => panic!("Error: {:?}", e),
         }
     }
+}
+
+pub async fn get_uniswap_v2_pairs_batch_request<M: Middleware>(
+    factory_address: H160,
+    from: U256,
+    step: U256,
+    middleware: Arc<M>,
+) -> Result<Vec<H160>, AMMError<M>> {
+    let mut pairs = vec![];
+    let constructor_args = Token::Tuple(vec![Token::Array(vec![
+        Token::Address(factory_address),
+        Token::Uint(from),
+        Token::Uint(step),
+    ])]);
+    let deployer = IGetUniswapV2PairsBatchRequest::deploy(middleware.clone(), constructor_args)?;
+    let return_data: Bytes = deployer.call_raw().await?;
+    let return_data_tokens = ethers::abi::decode(
+        &[ParamType::Array(Box::new(ParamType::Address))],
+        &return_data,
+    )?;
+
+    return_data_tokens
+        .into_iter()
+        .next()
+        .ok_or(AMMError::<M>::BatchRequestError(factory_address))?
+        .into_array()
+        .ok_or(AMMError::<M>::BatchRequestError(factory_address))?
+        .into_iter()
+        .for_each({
+            |token| match token.into_address() {
+                Some(addr) => {
+                    if !addr.is_zero() {
+                        pairs.push(addr);
+                    }
+                }
+                None => (),
+            }
+        });
+
+    Ok(pairs)
 }
