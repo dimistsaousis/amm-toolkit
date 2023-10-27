@@ -4,7 +4,7 @@ use ethers::{
 };
 use std::{str::FromStr, sync::Arc};
 
-use crate::amm::uniswap_v2::UniswapV2Pool;
+use crate::amm::uniswap_v2::{factory::UniswapV2Factory, UniswapV2Pool};
 
 pub async fn simulate_swaps() -> eyre::Result<()> {
     let rpc_endpoint = std::env::var("NETWORK_RPC").expect("Missing NETWORK_RPC env variable");
@@ -42,5 +42,17 @@ pub async fn get_swap_call_data() -> eyre::Result<()> {
     let to_address = H160::from_str("0xdfC9F6651b27Fe326D61052979e6d8b90774240d")?;
     let swap_calldata = pool.swap_calldata(U256::from(10000), U256::zero(), to_address, vec![]);
     println!("Swap calldata: {:?}", swap_calldata);
+    Ok(())
+}
+
+pub async fn get_pairs_of_uniswap_v2_factory() -> eyre::Result<()> {
+    let rpc_endpoint = std::env::var("NETWORK_RPC")?;
+    let middleware = Arc::new(Provider::<Http>::try_from(rpc_endpoint)?);
+    let uniswap_v2_factory = H160::from_str("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f")?;
+    let factory = UniswapV2Factory::new(uniswap_v2_factory, 2638438, 300);
+    let pair_addresses = factory
+        .get_all_pairs_addresses_via_batched_calls(middleware, Some(200))
+        .await?;
+    println!("Got *{}* pair addresses", pair_addresses.len());
     Ok(())
 }
