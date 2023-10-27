@@ -85,4 +85,32 @@ impl UniswapV2Pool {
             || self.reserve_0 == 0
             || self.reserve_1 == 0)
     }
+
+    async fn populate_data<M: Middleware>(
+        &mut self,
+        _block_number: Option<u64>,
+        middleware: Arc<M>,
+    ) -> Result<(), AMMError<M>> {
+        batch_request::get_v2_pool_data_batch_request(self, middleware.clone()).await?;
+
+        Ok(())
+    }
+
+    //Creates a new instance of the pool from the pair address, and syncs the pool data
+    pub fn new_from_address<M: Middleware>(
+        pair_address: H160,
+        fee: u32,
+        middleware: Arc<M>,
+    ) -> Result<Self, AMMError<M>> {
+        let pool = UniswapV2Pool {
+            address: pair_address,
+            token_a: H160::zero(),
+            token_a_decimals: 0,
+            token_b: H160::zero(),
+            token_b_decimals: 0,
+            reserve_0: 0,
+            reserve_1: 0,
+            fee,
+        };
+    }
 }
