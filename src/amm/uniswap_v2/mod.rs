@@ -1,18 +1,17 @@
 pub mod batch_request;
 use std::sync::Arc;
 
-use async_trait::async_trait;
-use dotenv::Error;
 use ethers::{
     prelude::abigen,
-    providers::{Middleware, MiddlewareError},
-    types::H160,
+    providers::Middleware,
+    types::{H160, U256},
 };
 use serde::{Deserialize, Serialize};
 
-use crate::errors::AMMError;
-
-use super::AutomatedMarketMaker;
+use crate::{
+    errors::{AMMError, ArithmeticError, SwapSimulationError},
+    large_int_maths::{div_uu, q64_to_f64, U128_0X10000000000000000},
+};
 
 abigen!(
     IUniswapV2Pair,
@@ -87,31 +86,19 @@ impl UniswapV2Pool {
             || self.reserve_1 == 0)
     }
 
-    // async fn populate_data<M: Middleware>(
-    //     &mut self,
-    //     _block_number: Option<u64>,
-    //     middleware: Arc<M>,
-    // ) -> Result<(), AMMError<M>> {
-    //     batch_request::get_v2_pool_data_batch_request(self, middleware.clone()).await?;
+    //Creates a new instance of the pool from the pair address, and syncs the pool data
+    pub async fn new_from_address<M: Middleware>(
+        pair_address: H160,
+        fee: u32,
+        middleware: Arc<M>,
+    ) -> Result<Self, AMMError<M>> {
+        let pool =
+            batch_request::get_uniswap_v2_pool_data_batch_request(pair_address, fee, middleware)
+                .await?;
 
-    //     Ok(())
-    // }
-
-    // //Creates a new instance of the pool from the pair address, and syncs the pool data
-    // pub fn new_from_address<M: Middleware>(
-    //     pair_address: H160,
-    //     fee: u32,
-    //     middleware: Arc<M>,
-    // ) -> Result<Self, AMMError<M>> {
-    //     let pool = UniswapV2Pool {
-    //         address: pair_address,
-    //         token_a: H160::zero(),
-    //         token_a_decimals: 0,
-    //         token_b: H160::zero(),
-    //         token_b_decimals: 0,
-    //         reserve_0: 0,
-    //         reserve_1: 0,
-    //         fee,
-    //     };
-    // }
+        if !pool.data_is_populated() {
+            return Err(AMMError::PoolDataError);
+        }
+        Ok(pool)
+    }
 }
