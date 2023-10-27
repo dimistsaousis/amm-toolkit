@@ -101,4 +101,36 @@ impl UniswapV2Pool {
         }
         Ok(pool)
     }
+
+    pub fn simulate_swap(
+        &self,
+        token_in: H160,
+        amount_in: U256,
+    ) -> Result<U256, SwapSimulationError> {
+        if self.token_a == token_in {
+            Ok(self.get_amount_out(
+                amount_in,
+                U256::from(self.reserve_0),
+                U256::from(self.reserve_1),
+            ))
+        } else {
+            Ok(self.get_amount_out(
+                amount_in,
+                U256::from(self.reserve_1),
+                U256::from(self.reserve_0),
+            ))
+        }
+    }
+
+    pub fn get_amount_out(&self, amount_in: U256, reserve_in: U256, reserve_out: U256) -> U256 {
+        if amount_in.is_zero() || reserve_in.is_zero() || reserve_out.is_zero() {
+            return U256::zero();
+        }
+        let fee = (10000 - (self.fee / 10)) / 10; //Fee of 300 => (10,000 - 30) / 10  = 997
+        let amount_in_with_fee = amount_in * U256::from(fee);
+        let numerator = amount_in_with_fee * reserve_out;
+        let denominator = reserve_in * U256::from(1000) + amount_in_with_fee;
+
+        numerator / denominator
+    }
 }
