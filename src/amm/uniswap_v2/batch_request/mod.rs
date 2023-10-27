@@ -40,53 +40,43 @@ pub async fn get_uniswap_v2_pool_data_batch_request<M: Middleware>(
     let tokens = return_data_tokens
         .into_iter()
         .next()
-        .ok_or(AMMError::<M>::BatchRequestError(pair_address))
-        .unwrap()
+        .ok_or(AMMError::<M>::BatchRequestError(pair_address))?
         .into_array()
-        .ok_or(AMMError::<M>::BatchRequestError(pair_address))
-        .unwrap()
+        .ok_or(AMMError::<M>::BatchRequestError(pair_address))?
         .into_iter()
         .next()
-        .ok_or(AMMError::<M>::BatchRequestError(pair_address))
-        .unwrap()
+        .ok_or(AMMError::<M>::BatchRequestError(pair_address))?
         .into_tuple()
-        .ok_or(AMMError::<M>::BatchRequestError(pair_address))
-        .unwrap();
+        .ok_or(AMMError::<M>::BatchRequestError(pair_address))?;
 
     let pool = UniswapV2Pool {
         token_a: tokens[0]
             .to_owned()
             .into_address()
-            .ok_or(AMMError::<M>::BatchRequestError(pair_address))
-            .unwrap(),
+            .ok_or(AMMError::<M>::BatchRequestError(pair_address))?,
         token_a_decimals: tokens[1]
             .to_owned()
             .into_uint()
-            .ok_or(AMMError::<M>::BatchRequestError(pair_address))
-            .unwrap()
+            .ok_or(AMMError::<M>::BatchRequestError(pair_address))?
             .as_u32() as u8,
         token_b: tokens[2]
             .to_owned()
             .into_address()
-            .ok_or(AMMError::<M>::BatchRequestError(pair_address))
-            .unwrap(),
+            .ok_or(AMMError::<M>::BatchRequestError(pair_address))?,
         token_b_decimals: tokens[3]
             .to_owned()
             .into_uint()
-            .ok_or(AMMError::<M>::BatchRequestError(pair_address))
-            .unwrap()
+            .ok_or(AMMError::<M>::BatchRequestError(pair_address))?
             .as_u32() as u8,
         reserve_0: tokens[4]
             .to_owned()
             .into_uint()
-            .ok_or(AMMError::<M>::BatchRequestError(pair_address))
-            .unwrap()
+            .ok_or(AMMError::<M>::BatchRequestError(pair_address))?
             .as_u128(),
         reserve_1: tokens[5]
             .to_owned()
             .into_uint()
-            .ok_or(AMMError::<M>::BatchRequestError(pair_address))
-            .unwrap()
+            .ok_or(AMMError::<M>::BatchRequestError(pair_address))?
             .as_u128(),
         address: pair_address,
         fee,
