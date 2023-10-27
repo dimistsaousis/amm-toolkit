@@ -43,6 +43,29 @@ pub struct UniswapV2Pool {
 }
 
 impl UniswapV2Pool {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        address: H160,
+        token_a: H160,
+        token_a_decimals: u8,
+        token_b: H160,
+        token_b_decimals: u8,
+        reserve_0: u128,
+        reserve_1: u128,
+        fee: u32,
+    ) -> UniswapV2Pool {
+        UniswapV2Pool {
+            address,
+            token_a,
+            token_a_decimals,
+            token_b,
+            token_b_decimals,
+            reserve_0,
+            reserve_1,
+            fee,
+        }
+    }
+
     pub async fn get_reserves<M: Middleware>(
         &self,
         middleware: Arc<M>,
