@@ -41,10 +41,14 @@ impl UniswapV2Factory {
     pub async fn get_all_pairs_addresses_via_batched_calls<M: Middleware>(
         &self,
         middleware: Arc<M>,
+        pairs_length: Option<u32>,
     ) -> Result<Vec<H160>, AMMError<M>> {
-        let factory = IUniswapV2Factory::new(self.address, middleware.clone());
-        let pairs_length: U256 = factory.all_pairs_length().call().await?;
         let mut pairs = vec![];
+        let factory = IUniswapV2Factory::new(self.address, middleware.clone());
+        let pairs_length: U256 = match pairs_length {
+            Some(length) => U256::from(length),
+            None => factory.all_pairs_length().call().await?,
+        };
         let step = 766; //max batch size for this call until codesize is too large
         let mut idx_from = U256::zero();
         let mut idx_to = if step > pairs_length.as_usize() {
