@@ -2,6 +2,7 @@ pub mod batch_request;
 use std::sync::Arc;
 
 use ethers::{
+    abi::{Bytes, Token},
     prelude::abigen,
     providers::Middleware,
     types::{H160, U256},
@@ -165,5 +166,24 @@ impl UniswapV2Pool {
 
     pub fn calculate_price(&self, base_token: H160) -> Result<f64, ArithmeticError> {
         Ok(q64_to_f64(self.calculate_price_64_x_64(base_token)?))
+    }
+
+    pub fn swap_calldata(
+        &self,
+        amount_0_out: U256,
+        amount_1_out: U256,
+        to: H160,
+        calldata: Vec<u8>,
+    ) -> Result<Bytes, ethers::abi::Error> {
+        let input_tokens = vec![
+            Token::Uint(amount_0_out),
+            Token::Uint(amount_1_out),
+            Token::Address(to),
+            Token::Bytes(calldata),
+        ];
+
+        IUNISWAPV2PAIR_ABI
+            .function("swap")?
+            .encode_input(&input_tokens)
     }
 }

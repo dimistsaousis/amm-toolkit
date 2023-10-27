@@ -31,3 +31,16 @@ pub async fn get_usdc_weth_price() -> eyre::Result<()> {
     println!("ETH/USD: {price}");
     Ok(())
 }
+
+pub async fn get_swap_call_data() -> eyre::Result<()> {
+    let rpc_endpoint = std::env::var("NETWORK_RPC")?;
+    let middleware = Arc::new(Provider::<Http>::try_from(rpc_endpoint)?);
+    let uniswap_v2_usdc_weth_pool_address =
+        H160::from_str("0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc")?;
+    let pool =
+        UniswapV2Pool::new_from_address(uniswap_v2_usdc_weth_pool_address, 300, middleware).await?;
+    let to_address = H160::from_str("0xdfC9F6651b27Fe326D61052979e6d8b90774240d")?;
+    let swap_calldata = pool.swap_calldata(U256::from(10000), U256::zero(), to_address, vec![]);
+    println!("Swap calldata: {:?}", swap_calldata);
+    Ok(())
+}
