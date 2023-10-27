@@ -140,11 +140,11 @@ pub async fn get_uniswap_v2_pairs_batch_request<M: Middleware>(
     middleware: Arc<M>,
 ) -> Result<Vec<H160>, AMMError<M>> {
     let mut pairs = vec![];
-    let constructor_args = Token::Tuple(vec![Token::Array(vec![
-        Token::Address(factory_address),
+    let constructor_args = Token::Tuple(vec![
         Token::Uint(from),
         Token::Uint(step),
-    ])]);
+        Token::Address(factory_address),
+    ]);
     let deployer = IGetUniswapV2PairsBatchRequest::deploy(middleware.clone(), constructor_args)?;
     let return_data: Bytes = deployer.call_raw().await?;
     let return_data_tokens = ethers::abi::decode(
