@@ -1,3 +1,5 @@
+pub mod uniswap_v2;
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
