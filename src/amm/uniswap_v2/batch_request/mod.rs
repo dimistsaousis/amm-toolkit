@@ -19,7 +19,7 @@ abigen!(
     "src/amm/uniswap_v2/batch_request/GetUniswapV2PairsBatchRequest.json",
 );
 
-pub async fn get_uniswap_v2_pool_data_batch_request<M: Middleware>(
+pub async fn get_uniswap_v2_pool_data_batch_request_single<M: Middleware>(
     pair_address: H160,
     fee: u32,
     middleware: Arc<M>,
@@ -87,52 +87,6 @@ pub async fn get_uniswap_v2_pool_data_batch_request<M: Middleware>(
     Ok(pool)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    use ethers::providers::{Http, Provider};
-    use ethers::types::H160;
-    use std::str::FromStr;
-    use std::sync::Arc;
-
-    #[tokio::test]
-    async fn test_get_uniswap_v2_pool_data_batch_request() {
-        dotenv::dotenv().ok();
-        let rpc_endpoint = std::env::var("NETWORK_RPC").expect("Missing NETWORK_RPC env variable");
-        let middleware = Arc::new(Provider::<Http>::try_from(rpc_endpoint).unwrap());
-        let uniswap_v2_usdc_weth_pair_address =
-            H160::from_str("0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc").unwrap();
-
-        let result = get_uniswap_v2_pool_data_batch_request(
-            uniswap_v2_usdc_weth_pair_address,
-            300,
-            middleware.clone(),
-        )
-        .await;
-
-        match result {
-            Ok(pool) => {
-                assert_eq!(pool.address, uniswap_v2_usdc_weth_pair_address);
-                assert_eq!(
-                    pool.token_a,
-                    H160::from_str("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48").unwrap()
-                );
-                assert_eq!(pool.token_a_decimals, 6);
-                assert_eq!(
-                    pool.token_b,
-                    H160::from_str("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2").unwrap()
-                );
-                assert_eq!(pool.token_b_decimals, 18);
-                assert!(pool.reserve_0 > 0);
-                assert!(pool.reserve_1 > 0);
-                assert!(pool.fee == 300);
-            }
-            Err(e) => panic!("Error: {:?}", e),
-        }
-    }
-}
-
 pub async fn get_uniswap_v2_pairs_batch_request<M: Middleware>(
     factory_address: H160,
     from: U256,
@@ -171,4 +125,50 @@ pub async fn get_uniswap_v2_pairs_batch_request<M: Middleware>(
         });
 
     Ok(pairs)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use ethers::providers::{Http, Provider};
+    use ethers::types::H160;
+    use std::str::FromStr;
+    use std::sync::Arc;
+
+    #[tokio::test]
+    async fn test_get_uniswap_v2_pool_data_batch_request() {
+        dotenv::dotenv().ok();
+        let rpc_endpoint = std::env::var("NETWORK_RPC").expect("Missing NETWORK_RPC env variable");
+        let middleware = Arc::new(Provider::<Http>::try_from(rpc_endpoint).unwrap());
+        let uniswap_v2_usdc_weth_pair_address =
+            H160::from_str("0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc").unwrap();
+
+        let result = get_uniswap_v2_pool_data_batch_request_single(
+            uniswap_v2_usdc_weth_pair_address,
+            300,
+            middleware.clone(),
+        )
+        .await;
+
+        match result {
+            Ok(pool) => {
+                assert_eq!(pool.address, uniswap_v2_usdc_weth_pair_address);
+                assert_eq!(
+                    pool.token_a,
+                    H160::from_str("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48").unwrap()
+                );
+                assert_eq!(pool.token_a_decimals, 6);
+                assert_eq!(
+                    pool.token_b,
+                    H160::from_str("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2").unwrap()
+                );
+                assert_eq!(pool.token_b_decimals, 18);
+                assert!(pool.reserve_0 > 0);
+                assert!(pool.reserve_1 > 0);
+                assert!(pool.fee == 300);
+            }
+            Err(e) => panic!("Error: {:?}", e),
+        }
+    }
 }

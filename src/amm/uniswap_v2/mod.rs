@@ -1,5 +1,6 @@
 pub mod batch_request;
 pub mod factory;
+pub mod sync;
 use std::sync::Arc;
 
 use ethers::{
@@ -94,9 +95,12 @@ impl UniswapV2Pool {
         fee: u32,
         middleware: Arc<M>,
     ) -> Result<Self, AMMError<M>> {
-        let pool =
-            batch_request::get_uniswap_v2_pool_data_batch_request(pair_address, fee, middleware)
-                .await?;
+        let pool = batch_request::get_uniswap_v2_pool_data_batch_request_single(
+            pair_address,
+            fee,
+            middleware,
+        )
+        .await?;
 
         if !pool.data_is_populated() {
             return Err(AMMError::PoolDataError);
