@@ -3,7 +3,7 @@ use std::sync::Arc;
 use ethers::{
     prelude::abigen,
     providers::Middleware,
-    types::{H160, H256, U256},
+    types::{H160, U256},
 };
 use serde::{Deserialize, Serialize};
 
