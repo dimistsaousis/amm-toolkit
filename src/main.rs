@@ -8,4 +8,7 @@ async fn main() {
     playground::get_swap_call_data().await.unwrap();
     playground::get_pairs_of_uniswap_v2_factory().await.unwrap();
     playground::get_sync_uniswap_v2_pools().await.unwrap();
+    playground::get_all_uniswap_v2_pools_for_block_from_logs()
+        .await
+        .unwrap();
 }

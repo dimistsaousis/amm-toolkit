@@ -1,15 +1,16 @@
 use std::sync::Arc;
 
-use ethers::{
-    prelude::abigen,
-    providers::Middleware,
-    types::{H160, U256},
-};
-use serde::{Deserialize, Serialize};
-
-use crate::errors::AMMError;
-
 use super::{batch_request, UniswapV2Pool};
+use crate::errors::AMMError;
+use ethers::prelude::abigen;
+use ethers::{
+    abi::RawLog,
+    prelude::EthEvent,
+    providers::Middleware,
+    types::{BlockNumber, Filter, Log, ValueOrArray, H160, H256, U256, U64},
+};
+use futures::future;
+use serde::{Deserialize, Serialize};
 
 abigen!(
     IUniswapV2Factory,
@@ -21,6 +22,11 @@ abigen!(
 
     ]"#;
 );
+
+pub const PAIR_CREATED_EVENT_SIGNATURE: H256 = H256([
+    13, 54, 72, 189, 15, 107, 168, 1, 52, 163, 59, 169, 39, 90, 197, 133, 217, 211, 21, 240, 173,
+    131, 85, 205, 222, 253, 227, 26, 250, 40, 208, 233,
+]);
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct UniswapV2Factory {
@@ -36,6 +42,54 @@ impl UniswapV2Factory {
             creation_block,
             fee,
         }
+    }
+
+    fn amm_created_event_signature(&self) -> H256 {
+        PAIR_CREATED_EVENT_SIGNATURE
+    }
+
+    pub async fn new_pool_from_log<M: Middleware>(
+        &self,
+        log: Log,
+        middleware: Arc<M>,
+    ) -> Result<UniswapV2Pool, AMMError<M>> {
+        let pair_created_event: PairCreatedFilter =
+            PairCreatedFilter::decode_log(&RawLog::from(log))?;
+        Ok(UniswapV2Pool::new_from_address(pair_created_event.pair, self.fee, middleware).await?)
+    }
+
+    pub async fn get_all_pools_for_block_from_logs<M: Middleware>(
+        &self,
+        block: u64,
+        middleware: Arc<M>,
+    ) -> Result<Vec<UniswapV2Pool>, AMMError<M>> {
+        let logs = middleware
+            .get_logs(
+                &Filter::new()
+                    .topic0(ValueOrArray::Value(self.amm_created_event_signature()))
+                    .address(self.address)
+                    .from_block(BlockNumber::Number(U64([block])))
+                    .to_block(BlockNumber::Number(U64([block]))),
+            )
+            .await
+            .map_err(AMMError::MiddlewareError)?;
+
+        let futures: Vec<_> = logs
+            .into_iter()
+            .map(|log| self.new_pool_from_log(log, middleware.clone()))
+            .collect();
+
+        let results: Vec<Result<UniswapV2Pool, AMMError<M>>> = future::join_all(futures).await;
+
+        let mut pools = Vec::new();
+        for result in results {
+            match result {
+                Ok(pool) => pools.push(pool),
+                Err(err) => return Err(err),
+            }
+        }
+
+        Ok(pools)
     }
 
     pub async fn get_pair_addresses_range<M: Middleware>(

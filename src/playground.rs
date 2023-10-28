@@ -69,3 +69,16 @@ pub async fn get_sync_uniswap_v2_pools() -> eyre::Result<()> {
     println!("Got *{}* pools addresses", pools.len());
     Ok(())
 }
+
+pub async fn get_all_uniswap_v2_pools_for_block_from_logs() -> eyre::Result<()> {
+    let rpc_endpoint = std::env::var("NETWORK_RPC")?;
+    let middleware = Arc::new(Provider::<Http>::try_from(rpc_endpoint)?);
+    let uniswap_v2_factory = H160::from_str("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f")?;
+    let factory = UniswapV2Factory::new(uniswap_v2_factory, 2638438, 300);
+    let pools = factory
+        .get_all_pools_for_block_from_logs(10008355, middleware)
+        .await
+        .unwrap();
+    println!("Got {:?}", pools);
+    Ok(())
+}
