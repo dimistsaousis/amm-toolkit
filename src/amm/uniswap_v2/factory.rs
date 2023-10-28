@@ -3,7 +3,7 @@ use std::sync::Arc;
 use ethers::{
     prelude::abigen,
     providers::Middleware,
-    types::{H160, U256},
+    types::{H160, H256, U256},
 };
 use serde::{Deserialize, Serialize};
 
@@ -71,5 +71,13 @@ impl UniswapV2Factory {
             idx_to = (idx_to + step).min(pairs_length - 1);
         }
         Ok(pairs)
+    }
+
+    pub async fn get_all_pair_addresses<M: Middleware>(
+        &self,
+        middleware: Arc<M>,
+    ) -> Result<Vec<H160>, AMMError<M>> {
+        self.get_all_pairs_addresses_via_batched_calls(middleware, None)
+            .await
     }
 }
