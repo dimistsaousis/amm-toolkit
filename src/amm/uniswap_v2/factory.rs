@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::errors::AMMError;
 
-use super::batch_request;
+use super::{batch_request, UniswapV2Pool};
 
 abigen!(
     IUniswapV2Factory,
@@ -36,6 +36,30 @@ impl UniswapV2Factory {
             creation_block,
             fee,
         }
+    }
+
+    pub async fn get_pair_addresses_range<M: Middleware>(
+        &self,
+        middleware: Arc<M>,
+        from: u16,
+        size: u16,
+    ) -> Result<Vec<H160>, AMMError<M>> {
+        batch_request::get_uniswap_v2_pairs_batch_request(
+            self.address,
+            U256::from(from),
+            U256::from(size),
+            middleware,
+        )
+        .await
+    }
+
+    pub async fn get_pairs_range<M: Middleware>(
+        &self,
+        middleware: Arc<M>,
+        addresses: Vec<H160>,
+    ) -> Result<Vec<UniswapV2Pool>, AMMError<M>> {
+        batch_request::get_uniswap_v2_pool_data_batch_request(&addresses, self.fee, middleware)
+            .await
     }
 
     pub async fn get_all_pairs_addresses_via_batched_calls<M: Middleware>(
