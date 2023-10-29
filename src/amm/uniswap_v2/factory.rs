@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use super::{batch_request, UniswapV2Pool};
 use crate::errors::AMMError;
@@ -10,6 +10,7 @@ use ethers::{
     types::{BlockNumber, Filter, Log, ValueOrArray, H160, H256, U256, U64},
 };
 use futures::future;
+use indicatif::ProgressBar;
 use serde::{Deserialize, Serialize};
 
 abigen!(
@@ -46,6 +47,10 @@ impl UniswapV2Factory {
 
     fn amm_created_event_signature(&self) -> H256 {
         PAIR_CREATED_EVENT_SIGNATURE
+    }
+
+    pub fn contract<M: Middleware>(&self, middleware: Arc<M>) -> IUniswapV2Factory<M> {
+        IUniswapV2Factory::new(self.address, middleware)
     }
 
     pub async fn new_pool_from_log<M: Middleware>(
@@ -95,25 +100,49 @@ impl UniswapV2Factory {
     pub async fn get_pair_addresses_range<M: Middleware>(
         &self,
         middleware: Arc<M>,
-        from: u16,
-        size: u16,
+        from: u128,
+        to: u128,
     ) -> Result<Vec<H160>, AMMError<M>> {
         batch_request::get_uniswap_v2_pairs_batch_request(
             self.address,
             U256::from(from),
-            U256::from(size),
+            U256::from(to),
             middleware,
         )
         .await
     }
 
-    pub async fn get_pairs_range<M: Middleware>(
+    pub async fn get_pairs_range_from_addresses<M: Middleware>(
         &self,
         middleware: Arc<M>,
         addresses: Vec<H160>,
     ) -> Result<Vec<UniswapV2Pool>, AMMError<M>> {
         batch_request::get_uniswap_v2_pool_data_batch_request(&addresses, self.fee, middleware)
             .await
+    }
+
+    pub async fn get_pairs_range<M: Middleware>(
+        &self,
+        middleware: Arc<M>,
+        from: u128,
+        to: u128,
+        progress_bar: Option<Arc<Mutex<ProgressBar>>>,
+    ) -> Result<Vec<UniswapV2Pool>, AMMError<M>> {
+        let addresses = self
+            .get_pair_addresses_range(middleware.clone(), from, to)
+            .await?;
+        let pairs = batch_request::get_uniswap_v2_pool_data_batch_request(
+            &addresses,
+            self.fee,
+            middleware.clone(),
+        )
+        .await?;
+
+        if let Some(progress_bar) = progress_bar {
+            let locked_pb = progress_bar.lock().unwrap();
+            locked_pb.inc((to - from) as u64);
+        }
+        Ok(pairs)
     }
 
     pub async fn get_all_pairs_addresses_via_batched_calls<M: Middleware>(
