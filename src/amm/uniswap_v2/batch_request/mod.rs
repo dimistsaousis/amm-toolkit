@@ -169,13 +169,13 @@ pub async fn get_uniswap_v2_pool_data_batch_request<M: Middleware>(
 pub async fn get_uniswap_v2_pairs_batch_request<M: Middleware>(
     factory_address: H160,
     from: U256,
-    step: U256,
+    to: U256,
     middleware: Arc<M>,
 ) -> Result<Vec<H160>, AMMError<M>> {
     let mut pairs = vec![];
     let constructor_args = Token::Tuple(vec![
         Token::Uint(from),
-        Token::Uint(step),
+        Token::Uint(to),
         Token::Address(factory_address),
     ]);
     let deployer = IGetUniswapV2PairsBatchRequest::deploy(middleware.clone(), constructor_args)?;
