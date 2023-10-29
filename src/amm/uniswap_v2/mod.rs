@@ -103,7 +103,7 @@ impl UniswapV2Pool {
         .await?;
 
         if !pool.data_is_populated() {
-            return Err(AMMError::PoolDataError);
+            return Err(AMMError::PoolDataError(pair_address));
         }
         Ok(pool)
     }
