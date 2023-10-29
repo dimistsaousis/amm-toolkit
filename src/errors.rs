@@ -38,7 +38,7 @@ where
     #[error("Error when syncing pool")]
     SyncError(H160),
     #[error("Error when getting pool data")]
-    PoolDataError,
+    PoolDataError(H160),
     #[error("Arithmetic error")]
     ArithmeticError(#[from] ArithmeticError),
     #[error("No initialized ticks during v3 swap simulation")]
