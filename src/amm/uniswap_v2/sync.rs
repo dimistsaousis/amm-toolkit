@@ -1,14 +1,7 @@
-use std::{
-    fs::read_to_string,
-    sync::{Arc, Mutex},
-};
-
-use ethers::{providers::Middleware, types::U256};
-use futures::future;
-use indicatif::ProgressBar;
+use std::fs::read_to_string;
 
 use super::{factory::UniswapV2Factory, UniswapV2Pool};
-use crate::errors::{AMMError, CheckpointError};
+use crate::errors::CheckpointError;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
