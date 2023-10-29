@@ -127,46 +127,6 @@ pub async fn sync_all_uniswap_v2_pools_serial<M: Middleware>(
     Ok((pools, current_block))
 }
 
-pub async fn sync_all_uniswap_v2_pools_from_logs<M: Middleware>(
-    factory: UniswapV2Factory,
-    middleware: Arc<M>,
-    sync_block: u64,
-) -> Result<(Vec<UniswapV2Pool>, u64), AMMError<M>> {
-    let current_block = middleware
-        .get_block_number()
-        .await
-        .map_err(AMMError::MiddlewareError)?
-        .as_u64();
-
-    let total_blocks = current_block - sync_block;
-    println!("Syncing uniswap pools for {} blocks", total_blocks);
-
-    let mut futures: Vec<_> = vec![];
-    let pb = ProgressBar::new(total_blocks);
-    let shared_pb = Arc::new(Mutex::new(pb));
-
-    for i in sync_block..current_block {
-        futures.push(factory.get_all_pools_for_block_from_logs(
-            i,
-            middleware.clone(),
-            Some(shared_pb.clone()),
-        ));
-    }
-
-    let results: Vec<Result<Vec<UniswapV2Pool>, AMMError<M>>> = future::join_all(futures).await;
-    let mut pools = Vec::new();
-    for result in results {
-        match result {
-            Ok(mut pool_batch) => pools.append(&mut pool_batch),
-            Err(err) => return Err(err),
-        }
-    }
-
-    shared_pb.lock().unwrap().finish();
-
-    Ok((pools, current_block))
-}
-
 pub async fn sync_all_uniswap_v2_pools_from_logs_use_range<M: Middleware>(
     factory: UniswapV2Factory,
     middleware: Arc<M>,

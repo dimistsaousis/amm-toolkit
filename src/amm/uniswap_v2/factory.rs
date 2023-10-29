@@ -52,39 +52,6 @@ impl UniswapV2Factory {
         IUniswapV2Factory::new(self.address, middleware)
     }
 
-    pub async fn get_all_pools_for_block_from_logs<M: Middleware>(
-        &self,
-        block: u64,
-        middleware: Arc<M>,
-        progress_bar: Option<Arc<Mutex<ProgressBar>>>,
-    ) -> Result<Vec<UniswapV2Pool>, AMMError<M>> {
-        let logs = middleware
-            .get_logs(
-                &Filter::new()
-                    .topic0(ValueOrArray::Value(self.amm_created_event_signature()))
-                    .address(self.address)
-                    .from_block(BlockNumber::Number(U64([block])))
-                    .to_block(BlockNumber::Number(U64([block]))),
-            )
-            .await
-            .map_err(AMMError::MiddlewareError)?;
-
-        let mut addresses = vec![];
-        for log in logs {
-            let pair_created_event: PairCreatedFilter =
-                PairCreatedFilter::decode_log(&RawLog::from(log))?;
-            addresses.push(pair_created_event.pair);
-        }
-
-        let pairs = self.get_pairs_from_addresses(middleware, addresses).await?;
-
-        if let Some(progress_bar) = progress_bar {
-            progress_bar.lock().unwrap().inc(1);
-        }
-
-        Ok(pairs)
-    }
-
     pub async fn get_all_pools_for_block_range_from_logs<M: Middleware>(
         &self,
         block_start: u64,
