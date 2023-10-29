@@ -2,16 +2,9 @@ use ethers::{
     providers::{Http, Provider},
     types::{H160, U256},
 };
-use std::{str::FromStr, sync::Arc, time::Instant};
+use std::{str::FromStr, sync::Arc};
 
-use crate::amm::uniswap_v2::{
-    factory::UniswapV2Factory,
-    sync::{
-        sync_all_uniswap_v2_pools_concurrent, sync_all_uniswap_v2_pools_from_logs_use_range,
-        sync_all_uniswap_v2_pools_serial,
-    },
-    UniswapV2Pool,
-};
+use crate::amm::uniswap_v2::{factory::UniswapV2Factory, UniswapV2Pool};
 
 pub async fn simulate_swaps() -> eyre::Result<()> {
     let rpc_endpoint: String =
@@ -53,74 +46,24 @@ pub async fn get_swap_call_data() -> eyre::Result<()> {
     Ok(())
 }
 
-pub async fn get_pairs_of_uniswap_v2_factory() -> eyre::Result<()> {
-    let rpc_endpoint = std::env::var("NETWORK_RPC")?;
-    let middleware = Arc::new(Provider::<Http>::try_from(rpc_endpoint)?);
-    let uniswap_v2_factory = H160::from_str("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f")?;
-    let factory = UniswapV2Factory::new(uniswap_v2_factory, 10000835, 300);
-    let pair_addresses = factory
-        .get_all_pairs_addresses_via_batched_calls(middleware, Some(200))
-        .await?;
-    println!("Got *{}* pair addresses", pair_addresses.len());
-    Ok(())
-}
-
-pub async fn get_sync_uniswap_v2_pools_concurrent() -> eyre::Result<()> {
-    let rpc_endpoint = std::env::var("NETWORK_RPC")?;
-    let middleware = Arc::new(Provider::<Http>::try_from(rpc_endpoint)?);
-    let uniswap_v2_factory = H160::from_str("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f")?;
-    let factory = UniswapV2Factory::new(uniswap_v2_factory, 10000835, 300);
-    let (pools, _) = sync_all_uniswap_v2_pools_concurrent(factory, middleware)
-        .await
-        .unwrap();
-    println!("Got *{}* pools addresses", pools.len());
-    Ok(())
-}
-
-pub async fn get_sync_uniswap_v2_pools_serial() -> eyre::Result<()> {
-    let rpc_endpoint = std::env::var("NETWORK_RPC")?;
-    let middleware = Arc::new(Provider::<Http>::try_from(rpc_endpoint)?);
-    let uniswap_v2_factory = H160::from_str("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f")?;
-    let factory = UniswapV2Factory::new(uniswap_v2_factory, 10000835, 300);
-    let (pools, _) = sync_all_uniswap_v2_pools_serial(factory, middleware)
-        .await
-        .unwrap();
-    println!("Got *{}* pools addresses", pools.len());
-    Ok(())
-}
-
-pub async fn get_all_uniswap_v2_pools_for_block_from_logs() -> eyre::Result<()> {
+pub async fn get_pools_from_log() -> eyre::Result<()> {
     let rpc_endpoint = std::env::var("NETWORK_RPC")?;
     let middleware = Arc::new(Provider::<Http>::try_from(rpc_endpoint)?);
     let uniswap_v2_factory = H160::from_str("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f")?;
     let factory = UniswapV2Factory::new(uniswap_v2_factory, 10000835, 300);
     let pools = factory
-        .get_pools_from_logs(10008355, 10008355, middleware, None)
-        .await
-        .unwrap();
-    println!("Got {:?}", pools);
+        .get_pools_from_logs(middleware, Some(10008355), Some(10008355 + 1000), None)
+        .await?;
+    println!("Got following pools from blocks: {:?}", pools);
     Ok(())
 }
 
-pub async fn compare_concurrent_and_serial_uniswap2_pool_sync() -> eyre::Result<()> {
-    let start_method_1 = Instant::now();
-    get_sync_uniswap_v2_pools_concurrent().await?;
-    let duration_method_1 = start_method_1.elapsed().as_secs();
-    let start_method_1 = Instant::now();
-    get_sync_uniswap_v2_pools_serial().await?;
-    let duration_method_2 = start_method_1.elapsed().as_secs();
-    println!("Method 1 took: {duration_method_1}.\nMethod 2 took: {duration_method_2}");
-    Ok(())
-}
-
-pub async fn get_sync_all_uniswap_v2_pairs_from_logs() -> eyre::Result<()> {
+pub async fn get_all_pools() -> eyre::Result<()> {
     let rpc_endpoint = std::env::var("NETWORK_RPC")?;
     let middleware = Arc::new(Provider::<Http>::try_from(rpc_endpoint)?);
     let uniswap_v2_factory = H160::from_str("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f")?;
     let factory = UniswapV2Factory::new(uniswap_v2_factory, 10000835, 300);
-    let pools =
-        sync_all_uniswap_v2_pools_from_logs_use_range(factory, middleware, 8457097 + 10000000)
-            .await?;
+    let pools = factory.get_all_pools(middleware, None).await?;
     println!("Got {:?}", pools.0.len());
     Ok(())
 }
