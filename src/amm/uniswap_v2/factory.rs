@@ -9,7 +9,6 @@ use ethers::{
     providers::Middleware,
     types::{BlockNumber, Filter, Log, ValueOrArray, H160, H256, U256, U64},
 };
-use futures::future;
 use indicatif::ProgressBar;
 use serde::{Deserialize, Serialize};
 
@@ -67,6 +66,7 @@ impl UniswapV2Factory {
         &self,
         block: u64,
         middleware: Arc<M>,
+        progress_bar: Option<Arc<Mutex<ProgressBar>>>,
     ) -> Result<Vec<UniswapV2Pool>, AMMError<M>> {
         let logs = middleware
             .get_logs(
@@ -79,22 +79,54 @@ impl UniswapV2Factory {
             .await
             .map_err(AMMError::MiddlewareError)?;
 
-        let futures: Vec<_> = logs
-            .into_iter()
-            .map(|log| self.new_pool_from_log(log, middleware.clone()))
-            .collect();
-
-        let results: Vec<Result<UniswapV2Pool, AMMError<M>>> = future::join_all(futures).await;
-
-        let mut pools = Vec::new();
-        for result in results {
-            match result {
-                Ok(pool) => pools.push(pool),
-                Err(err) => return Err(err),
-            }
+        let mut addresses = vec![];
+        for log in logs {
+            let pair_created_event: PairCreatedFilter =
+                PairCreatedFilter::decode_log(&RawLog::from(log))?;
+            addresses.push(pair_created_event.pair);
         }
 
-        Ok(pools)
+        let pairs = self.get_pairs_from_addresses(middleware, addresses).await?;
+
+        if let Some(progress_bar) = progress_bar {
+            progress_bar.lock().unwrap().inc(1);
+        }
+
+        Ok(pairs)
+    }
+
+    pub async fn get_all_pools_for_block_range_from_logs<M: Middleware>(
+        &self,
+        block_start: u64,
+        block_end: u64,
+        middleware: Arc<M>,
+        progress_bar: Option<Arc<Mutex<ProgressBar>>>,
+    ) -> Result<Vec<UniswapV2Pool>, AMMError<M>> {
+        let logs = middleware
+            .get_logs(
+                &Filter::new()
+                    .topic0(ValueOrArray::Value(self.amm_created_event_signature()))
+                    .address(self.address)
+                    .from_block(BlockNumber::Number(U64([block_start])))
+                    .to_block(BlockNumber::Number(U64([block_end]))),
+            )
+            .await
+            .map_err(AMMError::MiddlewareError)?;
+
+        let mut addresses = vec![];
+        for log in logs {
+            let pair_created_event: PairCreatedFilter =
+                PairCreatedFilter::decode_log(&RawLog::from(log))?;
+            addresses.push(pair_created_event.pair);
+        }
+
+        let pairs = self.get_pairs_from_addresses(middleware, addresses).await?;
+
+        if let Some(progress_bar) = progress_bar {
+            progress_bar.lock().unwrap().inc(block_end - block_start);
+        }
+
+        Ok(pairs)
     }
 
     pub async fn get_pair_addresses_range<M: Middleware>(
@@ -112,7 +144,7 @@ impl UniswapV2Factory {
         .await
     }
 
-    pub async fn get_pairs_range_from_addresses<M: Middleware>(
+    pub async fn get_pairs_from_addresses<M: Middleware>(
         &self,
         middleware: Arc<M>,
         addresses: Vec<H160>,
