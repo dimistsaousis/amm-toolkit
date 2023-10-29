@@ -9,6 +9,7 @@ use ethers::{
     providers::Middleware,
     types::{BlockNumber, Filter, ValueOrArray, H160, H256, U256, U64},
 };
+use futures::future;
 use indicatif::ProgressBar;
 use serde::{Deserialize, Serialize};
 
@@ -52,20 +53,19 @@ impl UniswapV2Factory {
         IUniswapV2Factory::new(self.address, middleware)
     }
 
-    pub async fn get_pools_from_logs<M: Middleware>(
+    async fn get_pool_addresses_from_logs_range<M: Middleware>(
         &self,
-        block_start: u64,
-        block_end: u64,
+        start_block: u64,
+        end_block: u64,
         middleware: Arc<M>,
-        progress_bar: Option<Arc<Mutex<ProgressBar>>>,
-    ) -> Result<Vec<UniswapV2Pool>, AMMError<M>> {
+    ) -> Result<Vec<H160>, AMMError<M>> {
         let logs = middleware
             .get_logs(
                 &Filter::new()
                     .topic0(ValueOrArray::Value(self.amm_created_event_signature()))
                     .address(self.address)
-                    .from_block(BlockNumber::Number(U64([block_start])))
-                    .to_block(BlockNumber::Number(U64([block_end]))),
+                    .from_block(BlockNumber::Number(U64([start_block])))
+                    .to_block(BlockNumber::Number(U64([end_block]))),
             )
             .await
             .map_err(AMMError::MiddlewareError)?;
@@ -76,17 +76,39 @@ impl UniswapV2Factory {
                 PairCreatedFilter::decode_log(&RawLog::from(log))?;
             addresses.push(pair_created_event.pair);
         }
+        Ok(addresses)
+    }
 
-        let pairs = self.get_pairs_from_addresses(middleware, addresses).await?;
+    async fn get_pools_from_addresses<M: Middleware>(
+        &self,
+        middleware: Arc<M>,
+        addresses: Vec<H160>,
+    ) -> Result<Vec<UniswapV2Pool>, AMMError<M>> {
+        batch_request::get_uniswap_v2_pool_data_batch_request(&addresses, self.fee, middleware)
+            .await
+    }
+
+    async fn get_pools_from_logs_range<M: Middleware>(
+        &self,
+        start_block: u64,
+        end_block: u64,
+        middleware: Arc<M>,
+        progress_bar: Option<Arc<Mutex<ProgressBar>>>,
+    ) -> Result<Vec<UniswapV2Pool>, AMMError<M>> {
+        let addresses = self
+            .get_pool_addresses_from_logs_range(start_block, end_block, middleware.clone())
+            .await?;
+        let pairs: Vec<UniswapV2Pool> =
+            self.get_pools_from_addresses(middleware, addresses).await?;
 
         if let Some(progress_bar) = progress_bar {
-            progress_bar.lock().unwrap().inc(block_end - block_start);
+            progress_bar.lock().unwrap().inc(end_block - start_block);
         }
 
         Ok(pairs)
     }
 
-    pub async fn get_pair_addresses_range<M: Middleware>(
+    async fn get_pool_addresses_range<M: Middleware>(
         &self,
         middleware: Arc<M>,
         from: u128,
@@ -101,16 +123,7 @@ impl UniswapV2Factory {
         .await
     }
 
-    pub async fn get_pairs_from_addresses<M: Middleware>(
-        &self,
-        middleware: Arc<M>,
-        addresses: Vec<H160>,
-    ) -> Result<Vec<UniswapV2Pool>, AMMError<M>> {
-        batch_request::get_uniswap_v2_pool_data_batch_request(&addresses, self.fee, middleware)
-            .await
-    }
-
-    pub async fn get_pairs_range<M: Middleware>(
+    async fn get_pools_range<M: Middleware>(
         &self,
         middleware: Arc<M>,
         from: u128,
@@ -118,7 +131,7 @@ impl UniswapV2Factory {
         progress_bar: Option<Arc<Mutex<ProgressBar>>>,
     ) -> Result<Vec<UniswapV2Pool>, AMMError<M>> {
         let addresses = self
-            .get_pair_addresses_range(middleware.clone(), from, to)
+            .get_pool_addresses_range(middleware.clone(), from, to)
             .await?;
         let pairs = batch_request::get_uniswap_v2_pool_data_batch_request(
             &addresses,
@@ -134,46 +147,106 @@ impl UniswapV2Factory {
         Ok(pairs)
     }
 
-    pub async fn get_all_pairs_addresses_via_batched_calls<M: Middleware>(
+    pub async fn get_all_pools<M: Middleware>(
         &self,
         middleware: Arc<M>,
-        pairs_length: Option<u32>,
-    ) -> Result<Vec<H160>, AMMError<M>> {
-        let mut pairs = vec![];
-        let factory = IUniswapV2Factory::new(self.address, middleware.clone());
-        let pairs_length: U256 = match pairs_length {
-            Some(length) => U256::from(length),
-            None => factory.all_pairs_length().call().await?,
+        step: Option<usize>,
+    ) -> Result<(Vec<UniswapV2Pool>, u64), AMMError<M>> {
+        let step = match step {
+            Some(step) => step,
+            None => 100,
         };
-        let step = 766; //max batch size for this call until codesize is too large
-        let mut idx_from = U256::zero();
-        let mut idx_to = if step > pairs_length.as_usize() {
-            pairs_length
-        } else {
-            U256::from(step)
-        };
+        let current_block = middleware
+            .get_block_number()
+            .await
+            .map_err(AMMError::MiddlewareError)?
+            .as_u64();
+        let pairs_length: U256 = self
+            .contract(middleware.clone())
+            .all_pairs_length()
+            .call()
+            .await?;
 
-        for _ in (0..pairs_length.as_u128()).step_by(step) {
-            pairs.append(
-                &mut batch_request::get_uniswap_v2_pairs_batch_request(
-                    self.address,
-                    idx_from,
-                    idx_to,
-                    middleware.clone(),
-                )
-                .await?,
-            );
-            idx_from = idx_to;
-            idx_to = (idx_to + step).min(pairs_length - 1);
+        println!("Syncing {} uniswap pools", pairs_length);
+        let pb = ProgressBar::new(pairs_length.as_u64());
+        let shared_pb = Arc::new(Mutex::new(pb));
+
+        let mut futures: Vec<_> = vec![];
+        for i in (0..pairs_length.as_u128()).step_by(step) {
+            futures.push(self.get_pools_range(
+                middleware.clone(),
+                i,
+                (i + step as u128).min(pairs_length.as_u128()),
+                Some(shared_pb.clone()),
+            ));
         }
-        Ok(pairs)
+
+        let results: Vec<Result<Vec<UniswapV2Pool>, AMMError<M>>> = future::join_all(futures).await;
+        let mut pools = Vec::new();
+        for result in results {
+            match result {
+                Ok(mut pool_batch) => pools.append(&mut pool_batch),
+                Err(err) => return Err(err),
+            }
+        }
+        shared_pb.lock().unwrap().finish();
+        Ok((pools, current_block))
     }
 
-    pub async fn get_all_pair_addresses<M: Middleware>(
+    pub async fn get_pools_from_logs<M: Middleware>(
         &self,
         middleware: Arc<M>,
-    ) -> Result<Vec<H160>, AMMError<M>> {
-        self.get_all_pairs_addresses_via_batched_calls(middleware, None)
-            .await
+        start_block: Option<u64>,
+        end_block: Option<u64>,
+        step: Option<usize>,
+    ) -> Result<Vec<UniswapV2Pool>, AMMError<M>> {
+        let start_block = match start_block {
+            Some(start_block) => start_block,
+            None => 0,
+        };
+        let end_block = match end_block {
+            Some(end_block) => end_block,
+            None => middleware
+                .get_block_number()
+                .await
+                .map_err(AMMError::MiddlewareError)?
+                .as_u64(),
+        };
+        let step = match step {
+            Some(step) => step,
+            None => 100,
+        };
+        let total_blocks = end_block - start_block;
+
+        println!("Syncing uniswap pools for {} blocks", total_blocks);
+        let pb = ProgressBar::new(total_blocks);
+        let shared_pb = Arc::new(Mutex::new(pb));
+
+        let mut futures = vec![];
+        for i in (start_block..end_block).step_by(step) {
+            futures.push(self.get_pools_from_logs_range(
+                i,
+                (i + step as u64).min(end_block),
+                middleware.clone(),
+                Some(shared_pb.clone()),
+            ));
+        }
+
+        let results: Vec<Result<Vec<UniswapV2Pool>, AMMError<M>>> = future::join_all(futures).await;
+
+        let mut pools = Vec::new();
+        for result in results {
+            match result {
+                Ok(mut pool_batch) => pools.append(&mut pool_batch),
+                Err(AMMError::PoolDataError(addr)) => {
+                    println!("Data not populated for {:?}", addr);
+                }
+                Err(err) => return Err(err),
+            }
+        }
+
+        shared_pb.lock().unwrap().finish();
+
+        Ok(pools)
     }
 }
