@@ -57,7 +57,7 @@ pub async fn get_pairs_of_uniswap_v2_factory() -> eyre::Result<()> {
     let rpc_endpoint = std::env::var("NETWORK_RPC")?;
     let middleware = Arc::new(Provider::<Http>::try_from(rpc_endpoint)?);
     let uniswap_v2_factory = H160::from_str("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f")?;
-    let factory = UniswapV2Factory::new(uniswap_v2_factory, 2638438, 300);
+    let factory = UniswapV2Factory::new(uniswap_v2_factory, 10000835, 300);
     let pair_addresses = factory
         .get_all_pairs_addresses_via_batched_calls(middleware, Some(200))
         .await?;
@@ -69,7 +69,7 @@ pub async fn get_sync_uniswap_v2_pools_concurrent() -> eyre::Result<()> {
     let rpc_endpoint = std::env::var("NETWORK_RPC")?;
     let middleware = Arc::new(Provider::<Http>::try_from(rpc_endpoint)?);
     let uniswap_v2_factory = H160::from_str("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f")?;
-    let factory = UniswapV2Factory::new(uniswap_v2_factory, 2638438, 300);
+    let factory = UniswapV2Factory::new(uniswap_v2_factory, 10000835, 300);
     let (pools, _) = sync_all_uniswap_v2_pools_concurrent(factory, middleware)
         .await
         .unwrap();
@@ -81,7 +81,7 @@ pub async fn get_sync_uniswap_v2_pools_serial() -> eyre::Result<()> {
     let rpc_endpoint = std::env::var("NETWORK_RPC")?;
     let middleware = Arc::new(Provider::<Http>::try_from(rpc_endpoint)?);
     let uniswap_v2_factory = H160::from_str("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f")?;
-    let factory = UniswapV2Factory::new(uniswap_v2_factory, 2638438, 300);
+    let factory = UniswapV2Factory::new(uniswap_v2_factory, 10000835, 300);
     let (pools, _) = sync_all_uniswap_v2_pools_serial(factory, middleware)
         .await
         .unwrap();
@@ -93,7 +93,7 @@ pub async fn get_all_uniswap_v2_pools_for_block_from_logs() -> eyre::Result<()> 
     let rpc_endpoint = std::env::var("NETWORK_RPC")?;
     let middleware = Arc::new(Provider::<Http>::try_from(rpc_endpoint)?);
     let uniswap_v2_factory = H160::from_str("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f")?;
-    let factory = UniswapV2Factory::new(uniswap_v2_factory, 2638438, 300);
+    let factory = UniswapV2Factory::new(uniswap_v2_factory, 10000835, 300);
     let pools = factory
         .get_pools_from_logs(10008355, 10008355, middleware, None)
         .await
