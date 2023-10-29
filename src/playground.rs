@@ -5,7 +5,7 @@ use ethers::{
 use std::{str::FromStr, sync::Arc};
 
 use crate::amm::uniswap_v2::{
-    factory::UniswapV2Factory, sync::sync_uniswap_v2_pools, UniswapV2Pool,
+    factory::UniswapV2Factory, sync::sync_all_uniswap_v2_pools, UniswapV2Pool,
 };
 
 pub async fn simulate_swaps() -> eyre::Result<()> {
@@ -65,7 +65,9 @@ pub async fn get_sync_uniswap_v2_pools() -> eyre::Result<()> {
     let middleware = Arc::new(Provider::<Http>::try_from(rpc_endpoint)?);
     let uniswap_v2_factory = H160::from_str("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f")?;
     let factory = UniswapV2Factory::new(uniswap_v2_factory, 2638438, 300);
-    let (pools, _) = sync_uniswap_v2_pools(factory, middleware).await.unwrap();
+    let (pools, _) = sync_all_uniswap_v2_pools(factory, middleware)
+        .await
+        .unwrap();
     println!("Got *{}* pools addresses", pools.len());
     Ok(())
 }
