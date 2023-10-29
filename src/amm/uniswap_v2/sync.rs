@@ -146,7 +146,7 @@ pub async fn sync_all_uniswap_v2_pools_from_logs_use_range<M: Middleware>(
     let shared_pb = Arc::new(Mutex::new(pb));
 
     for i in (sync_block..current_block).step_by(100) {
-        futures.push(factory.get_all_pools_for_block_range_from_logs(
+        futures.push(factory.get_pools_from_logs(
             i,
             (i + 100).min(current_block),
             middleware.clone(),

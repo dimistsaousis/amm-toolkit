@@ -52,7 +52,7 @@ impl UniswapV2Factory {
         IUniswapV2Factory::new(self.address, middleware)
     }
 
-    pub async fn get_all_pools_for_block_range_from_logs<M: Middleware>(
+    pub async fn get_pools_from_logs<M: Middleware>(
         &self,
         block_start: u64,
         block_end: u64,
