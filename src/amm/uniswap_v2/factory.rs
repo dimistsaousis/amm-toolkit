@@ -7,7 +7,7 @@ use ethers::{
     abi::RawLog,
     prelude::EthEvent,
     providers::Middleware,
-    types::{BlockNumber, Filter, Log, ValueOrArray, H160, H256, U256, U64},
+    types::{BlockNumber, Filter, ValueOrArray, H160, H256, U256, U64},
 };
 use indicatif::ProgressBar;
 use serde::{Deserialize, Serialize};
@@ -50,16 +50,6 @@ impl UniswapV2Factory {
 
     pub fn contract<M: Middleware>(&self, middleware: Arc<M>) -> IUniswapV2Factory<M> {
         IUniswapV2Factory::new(self.address, middleware)
-    }
-
-    pub async fn new_pool_from_log<M: Middleware>(
-        &self,
-        log: Log,
-        middleware: Arc<M>,
-    ) -> Result<UniswapV2Pool, AMMError<M>> {
-        let pair_created_event: PairCreatedFilter =
-            PairCreatedFilter::decode_log(&RawLog::from(log))?;
-        Ok(UniswapV2Pool::new_from_address(pair_created_event.pair, self.fee, middleware).await?)
     }
 
     pub async fn get_all_pools_for_block_from_logs<M: Middleware>(
