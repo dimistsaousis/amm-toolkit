@@ -1,11 +1,14 @@
-use std::{fs::read_to_string, sync::Arc};
+use std::{
+    fs::read_to_string,
+    sync::{Arc, Mutex},
+};
 
-use ethers::providers::Middleware;
-use spinoff::{spinners, Color, Spinner};
+use ethers::{providers::Middleware, types::U256};
+use futures::future;
+use indicatif::ProgressBar;
 
+use super::{factory::UniswapV2Factory, UniswapV2Pool};
 use crate::errors::{AMMError, CheckpointError};
-
-use super::{batch_request, factory::UniswapV2Factory, UniswapV2Pool};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -42,27 +45,46 @@ impl Checkpoint {
     }
 }
 
-pub async fn sync_uniswap_v2_pools<M: Middleware>(
+pub async fn sync_all_uniswap_v2_pools<M: Middleware>(
     factory: UniswapV2Factory,
     middleware: Arc<M>,
 ) -> Result<(Vec<UniswapV2Pool>, u64), AMMError<M>> {
-    let spinner = Spinner::new(spinners::Dots, "Syncing Pools...", Color::Blue);
     let current_block = middleware
         .get_block_number()
         .await
         .map_err(AMMError::MiddlewareError)?
         .as_u64();
 
-    let pairs = factory
-        .get_all_pairs_addresses_via_batched_calls(middleware.clone(), Some(100))
-        .await
-        .unwrap();
-    let pools = batch_request::get_uniswap_v2_pool_data_batch_request(
-        &pairs,
-        factory.fee,
-        middleware.clone(),
-    )
-    .await?;
-    spinner.success("Pools synced");
+    let pairs_length: U256 = factory
+        .contract(middleware.clone())
+        .all_pairs_length()
+        .call()
+        .await?;
+    println!("Syncing {} uniswap pools", pairs_length);
+    let mut futures: Vec<_> = vec![];
+    let pb = ProgressBar::new(pairs_length.as_u64());
+    let shared_pb = Arc::new(Mutex::new(pb));
+
+    for i in (0..pairs_length.as_u128()).step_by(100) {
+        futures.push(factory.get_pairs_range(
+            middleware.clone(),
+            i,
+            (i + 100).min(pairs_length.as_u128()),
+            Some(shared_pb.clone()),
+        ));
+    }
+
+    let results: Vec<Result<Vec<UniswapV2Pool>, AMMError<M>>> = future::join_all(futures).await;
+
+    let mut pools = Vec::new();
+    for result in results {
+        match result {
+            Ok(mut pool_batch) => pools.append(&mut pool_batch),
+            Err(err) => return Err(err),
+        }
+    }
+
+    shared_pb.lock().unwrap().finish();
+
     Ok((pools, current_block))
 }
