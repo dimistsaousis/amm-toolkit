@@ -84,7 +84,7 @@ pub async fn get_top10_pools_in_terms_of_weth_equivalent_value() -> eyre::Result
     let pools =
         sync_uniswap_v2_pools(config.uniswap_v2_factory.clone(), config.middleware.clone()).await?;
     let pool_addresses = pools.into_iter().map(|pool| pool.address).collect();
-    let weth_values_in_pools_batch = get_weth_value_in_pools(
+    let map = get_weth_value_in_pools(
         pool_addresses,
         config.tokens["WETH"],
         config.uniswap_v2_factory.address,
@@ -92,6 +92,13 @@ pub async fn get_top10_pools_in_terms_of_weth_equivalent_value() -> eyre::Result
         Some(50),
     )
     .await?;
-    println!("Got {} number of pools", weth_values_in_pools_batch.len());
+
+    let mut entries: Vec<_> = map.iter().collect();
+    entries.sort_by(|a, b| b.1.cmp(a.1)); // Sort by value in descending order
+    let top_10: Vec<_> = entries.into_iter().take(10).collect();
+
+    for (key, value) in top_10 {
+        println!("{:?}: {:?}", key, value);
+    }
     Ok(())
 }
