@@ -4,7 +4,9 @@ use ethers::{
 };
 use std::{str::FromStr, sync::Arc};
 
-use crate::amm::uniswap_v2::{factory::UniswapV2Factory, UniswapV2Pool};
+use crate::amm::uniswap_v2::{
+    factory::UniswapV2Factory, sync::sync_uniswap_v2_pools, UniswapV2Pool,
+};
 
 pub async fn simulate_swaps() -> eyre::Result<()> {
     let rpc_endpoint: String =
@@ -65,5 +67,15 @@ pub async fn get_all_pools() -> eyre::Result<()> {
     let factory = UniswapV2Factory::new(uniswap_v2_factory, 10000835, 300);
     let pools = factory.get_all_pools(middleware, None).await?;
     println!("Got {:?}", pools.0.len());
+    Ok(())
+}
+
+pub async fn run_sync_uniswap_v2_pools() -> eyre::Result<()> {
+    let rpc_endpoint = std::env::var("NETWORK_RPC")?;
+    let middleware = Arc::new(Provider::<Http>::try_from(rpc_endpoint)?);
+    let uniswap_v2_factory = H160::from_str("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f")?;
+    let factory = UniswapV2Factory::new(uniswap_v2_factory, 10000835, 300);
+    let pools = sync_uniswap_v2_pools(factory, middleware).await?;
+    println!("Got {:?}", pools.len());
     Ok(())
 }
