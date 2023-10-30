@@ -1,10 +1,16 @@
-use std::sync::Arc;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+    vec,
+};
 
 use ethers::{
     abi::{ParamType, Token},
     providers::Middleware,
     types::{Bytes, H160, U256},
 };
+use futures::future;
+use indicatif::ProgressBar;
 
 use crate::errors::AMMError;
 
@@ -14,11 +20,11 @@ use ethers::prelude::abigen;
 
 abigen!(
     IGetUniswapV2PoolDataBatchRequest,
-    "src/amm/uniswap_v2/batch_request/GetUniswapV2PoolDataBatchRequest.json";
+    "src/contracts/GetUniswapV2PoolDataBatchRequest.json";
     IGetUniswapV2PairsBatchRequest,
-    "src/amm/uniswap_v2/batch_request/GetUniswapV2PairsBatchRequest.json";
+    "src/contracts/GetUniswapV2PairsBatchRequest.json";
     GetWethValueInPoolBatchRequest,
-    "src/amm/uniswap_v2/batch_request/GetWethValueInPoolBatchRequest.json";
+    "src/contracts/GetWethValueInPoolBatchRequest.json";
 );
 
 pub async fn get_uniswap_v2_pool_data_batch_request_single<M: Middleware>(
@@ -165,38 +171,114 @@ pub async fn get_uniswap_v2_pairs_batch_request<M: Middleware>(
     Ok(pairs)
 }
 
-pub async fn get_weth_value_in_pool_batch_request<M: Middleware>(
+async fn get_weth_value_in_pool_batch_request<M: Middleware>(
     addresses: Vec<H160>,
     weth_address: H160,
     factory_address: H160,
     middleware: Arc<M>,
-) -> Result<Vec<U256>, AMMError<M>> {
-    let addresses: Vec<Token> = addresses
+    progress_bar: Option<Arc<Mutex<ProgressBar>>>,
+) -> Result<HashMap<H160, U256>, AMMError<M>> {
+    let addresses_token: Vec<Token> = addresses
         .iter()
         .map(|&address| Token::Address(address))
         .collect();
     let constructor_args = Token::Tuple(vec![
-        Token::Array(addresses),
+        Token::Array(addresses_token),
         Token::Address(weth_address),
         Token::Address(factory_address),
     ]);
     let deployer = GetWethValueInPoolBatchRequest::deploy(middleware.clone(), constructor_args)?;
-    let return_data: Bytes = deployer.call_raw().await?;
+    let return_data: Bytes = deployer
+        .call_raw()
+        .await
+        .map_err(|_err| AMMError::OutOfGasError(addresses.clone()))?;
     let return_data_tokens = ethers::abi::decode(
         &[ParamType::Array(Box::new(ParamType::Uint(256)))],
         &return_data,
     )?;
 
-    let mut weth_values_in_pools = vec![];
+    let mut weth_values_in_pools: HashMap<H160, U256> = HashMap::new();
+
     for token_array in return_data_tokens {
         if let Some(arr) = token_array.into_array() {
-            for token in arr {
+            for (idx, token) in arr.into_iter().enumerate() {
                 if let Some(weth_value_in_pool) = token.into_uint() {
-                    weth_values_in_pools.push(weth_value_in_pool / U256::exp10(18));
+                    weth_values_in_pools.insert(addresses[idx], weth_value_in_pool);
                 }
             }
         }
     }
+
+    if let Some(progress_bar) = progress_bar {
+        progress_bar.lock().unwrap().inc((addresses.len()) as u64);
+    }
+    Ok(weth_values_in_pools)
+}
+
+pub async fn get_weth_value_in_pools<M: Middleware>(
+    addresses: Vec<H160>,
+    weth_address: H160,
+    factory_address: H160,
+    middleware: Arc<M>,
+    step: Option<usize>,
+) -> Result<HashMap<H160, U256>, AMMError<M>> {
+    let step = match step {
+        Some(step) => step,
+        None => 100,
+    };
+    println!(
+        "Getting weth equivalent value of {} uniswap pools",
+        addresses.len()
+    );
+    let pb = ProgressBar::new(addresses.len() as u64);
+    let shared_pb = Arc::new(Mutex::new(pb));
+    let mut futures: Vec<_> = vec![];
+    for i in (0..addresses.len()).step_by(step) {
+        futures.push(get_weth_value_in_pool_batch_request(
+            addresses[i..(i + step).min(addresses.len())].to_vec(),
+            weth_address,
+            factory_address,
+            middleware.clone(),
+            Some(shared_pb.clone()),
+        ));
+    }
+    let results: Vec<std::result::Result<HashMap<H160, ethers::types::U256>, AMMError<M>>> =
+        future::join_all(futures).await;
+    let mut weth_values_in_pools: HashMap<H160, U256> = HashMap::new();
+    let mut failed_addresses: Vec<H160> = vec![];
+    for result in results {
+        match result {
+            Ok(mut weth_values_in_pools_batch) => {
+                weth_values_in_pools.extend(weth_values_in_pools_batch.drain())
+            }
+            Err(AMMError::OutOfGasError(failed_batch)) => {
+                failed_addresses.extend(failed_batch);
+            }
+            Err(err) => return Err(err),
+        }
+    }
+
+    let mut futures: Vec<_> = vec![];
+    for address in failed_addresses {
+        futures.push(get_weth_value_in_pool_batch_request(
+            vec![address],
+            weth_address,
+            factory_address,
+            middleware.clone(),
+            None,
+        ));
+    }
+    let results: Vec<std::result::Result<HashMap<H160, ethers::types::U256>, AMMError<M>>> =
+        future::join_all(futures).await;
+    for result in results {
+        match result {
+            Ok(mut weth_values_in_pools_batch) => {
+                weth_values_in_pools.extend(weth_values_in_pools_batch.drain())
+            }
+            Err(err) => return Err(err),
+        }
+    }
+
     Ok(weth_values_in_pools)
 }
 
@@ -302,17 +384,31 @@ mod tests {
         dotenv::dotenv().ok();
         let rpc_endpoint = std::env::var("NETWORK_RPC").expect("Missing NETWORK_RPC env variable");
         let middleware = Arc::new(Provider::<Http>::try_from(rpc_endpoint).unwrap());
-        let addresses = vec![
-            H160::from_str("0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc").unwrap(), // WETH<>USDc
-        ];
-        let weth = H160::from_str("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2").unwrap();
-        let factory = H160::from_str("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f").unwrap();
-
-        let r = get_weth_value_in_pool_batch_request(addresses, weth, factory, middleware)
+        let pool_address = H160::from_str("0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc").unwrap();
+        let weth_address = H160::from_str("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2").unwrap();
+        let factory_address = H160::from_str("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f").unwrap();
+        let total = get_weth_value_in_pool_batch_request(
+            vec![pool_address],
+            weth_address,
+            factory_address,
+            middleware.clone(),
+            None,
+        )
+        .await
+        .unwrap();
+        let pool = UniswapV2Pool::new_from_address(pool_address, 300, middleware.clone())
             .await
             .unwrap();
-
-        println!("{:?}", r);
-        assert!(false);
+        let reserves = pool.get_reserves(middleware.clone()).await.unwrap();
+        let v0 = reserves.0 as f64 / 1_000_000 as f64; // USDc reserves, we need to account for 6 decimals
+        let v1 = reserves.1 as f64 / 1_000_000 as f64; // Weth reserves, we need to account for 18 decimals
+        let v1: f64 = v1 / 1_000_000 as f64; // Done by dividing 3 times 10^6 to avoid overflows on f64
+        let v1: f64 = v1 / 1_000_000 as f64;
+        let price = pool.calculate_price(weth_address).unwrap(); // Price of 1 Weth in USDc
+        let amount_in_wei = total[&pool_address].as_u128();
+        let amount_in_weth = amount_in_wei as f64 / 1_000_000 as f64;
+        let amount_in_weth = amount_in_weth / 1_000_000 as f64;
+        let amount_in_weth = amount_in_weth / 1_000_000 as f64;
+        assert!(v0 / price + v1 - amount_in_weth < 1e-10);
     }
 }
