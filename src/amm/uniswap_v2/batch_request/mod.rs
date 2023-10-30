@@ -39,10 +39,35 @@ pub async fn get_uniswap_v2_pool_data_batch_request<M: Middleware>(
     fee: u32,
     middleware: Arc<M>,
 ) -> Result<Vec<UniswapV2Pool>, AMMError<M>> {
-    let mut target_addresses = vec![];
-    for address in pair_addresses.iter() {
-        target_addresses.push(Token::Address(*address));
+    fn token_to_address(token: &Token, address: H160) -> H160 {
+        token.to_owned().into_address().expect(&format!(
+            "Expected addresses for token and address {:?}",
+            address
+        ))
     }
+
+    fn token_to_u<U: TryFrom<u128>>(token: &Token, address: H160) -> U {
+        let value = token
+            .to_owned()
+            .into_uint()
+            .expect(&format!(
+                "Expected integer for token decimals and address {:?}",
+                address
+            ))
+            .as_u128();
+
+        U::try_from(value).unwrap_or_else(&|_| {
+            panic!(
+                "Failed to convert value {} to the desired unsigned integer type for address {:?}",
+                value, address
+            )
+        })
+    }
+
+    let target_addresses: Vec<Token> = pair_addresses
+        .iter()
+        .map(|&address| Token::Address(address))
+        .collect();
     let constructor_args = Token::Tuple(vec![Token::Array(target_addresses)]);
     let deployer = IGetUniswapV2PoolDataBatchRequest::deploy(middleware.clone(), constructor_args)?;
     let return_data: Bytes = deployer.call_raw().await?;
@@ -58,54 +83,28 @@ pub async fn get_uniswap_v2_pool_data_batch_request<M: Middleware>(
         &return_data,
     )?;
 
+    let err = AMMError::<M>::BatchRequestError;
+
     let mut pools = vec![];
     return_data_tokens
         .into_iter()
         .next()
-        .unwrap()
+        .ok_or(err(H160::zero()))?
         .into_array()
-        .unwrap()
+        .ok_or(err(H160::zero()))?
         .into_iter()
         .enumerate()
         .for_each(|(idx, token)| {
             let tup = token.into_tuple().unwrap();
-            let pair_address = pair_addresses[idx];
+            let address = pair_addresses[idx];
             pools.push(UniswapV2Pool {
-                token_a: tup[0]
-                    .to_owned()
-                    .into_address()
-                    .ok_or(AMMError::<M>::BatchRequestError(pair_address))
-                    .unwrap(),
-                token_a_decimals: tup[1]
-                    .to_owned()
-                    .into_uint()
-                    .ok_or(AMMError::<M>::BatchRequestError(pair_address))
-                    .unwrap()
-                    .as_u32() as u8,
-                token_b: tup[2]
-                    .to_owned()
-                    .into_address()
-                    .ok_or(AMMError::<M>::BatchRequestError(pair_address))
-                    .unwrap(),
-                token_b_decimals: tup[3]
-                    .to_owned()
-                    .into_uint()
-                    .ok_or(AMMError::<M>::BatchRequestError(pair_address))
-                    .unwrap()
-                    .as_u32() as u8,
-                reserve_0: tup[4]
-                    .to_owned()
-                    .into_uint()
-                    .ok_or(AMMError::<M>::BatchRequestError(pair_address))
-                    .unwrap()
-                    .as_u128(),
-                reserve_1: tup[5]
-                    .to_owned()
-                    .into_uint()
-                    .ok_or(AMMError::<M>::BatchRequestError(pair_address))
-                    .unwrap()
-                    .as_u128(),
-                address: pair_address,
+                token_a: token_to_address(&tup[0], address),
+                token_a_decimals: token_to_u::<u8>(&tup[1], address),
+                token_b: token_to_address(&tup[2], address),
+                token_b_decimals: token_to_u::<u8>(&tup[3], address),
+                reserve_0: token_to_u::<u128>(&tup[4], address),
+                reserve_1: token_to_u::<u128>(&tup[5], address),
+                address,
                 fee,
             });
         });
