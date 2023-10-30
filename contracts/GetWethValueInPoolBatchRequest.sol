@@ -26,6 +26,7 @@ contract GetWethValueInPoolBatchRequest {
 
     constructor(address[] memory pools, address weth, address factory) {
         uint256[] memory wethValueInPools = new uint256[](pools.length);
+
         for (uint256 i = 0; i < pools.length; ++i) {
             address pool = pools[i];
             if (pool.code.length == 0) {
@@ -61,6 +62,17 @@ contract GetWethValueInPoolBatchRequest {
             } else {
                 wethValueInPools[i] = 0;
             }
+        }
+
+        // insure abi encoding, not needed here but increase reusability for different return types
+        // note: abi.encode add a first 32 bytes word with the address of the original data
+        bytes memory abiEncodedData = abi.encode(wethValueInPools);
+
+        assembly {
+            // Return from the start of the data (discarding the original data address)
+            // up to the end of the memory used
+            let dataStart := add(abiEncodedData, 0x20)
+            return(dataStart, sub(msize(), dataStart))
         }
     }
 
@@ -122,7 +134,7 @@ contract GetWethValueInPoolBatchRequest {
         address weth,
         uint256 amount,
         address factory
-    ) internal returns (uint256 price) {
+    ) internal returns (uint256) {
         if (token == weth) {
             return amount;
         }
@@ -143,7 +155,12 @@ contract GetWethValueInPoolBatchRequest {
             return 0;
         }
         (uint256 r_0, uint256 r_1) = getNormalisedReserves(pairAddress);
-        price = divuu(tokenIsToken0 ? r_1 : r_0, tokenIsToken0 ? r_0 : r_1);
+        uint128 price = divuu(
+            tokenIsToken0 ? r_1 : r_0,
+            tokenIsToken0 ? r_0 : r_1
+        );
+        tokenToWethPrices[token] = price;
+        return mul64u(price, amount);
     }
 
     /// @notice helper function to multiply unsigned 64.64 fixed point number by a unsigned integer
