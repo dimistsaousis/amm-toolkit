@@ -67,15 +67,33 @@ impl Config {
 
     pub async fn pool(
         &self,
-        token_0: &str,
-        token_1: &str,
+        token0: &str,
+        token1: &str,
     ) -> Result<UniswapV2Pool, AMMError<Provider<Http>>> {
-        UniswapV2Pool::new_from_address(
-            self.uniswap_v2_pairs[token_0][token_1],
-            300,
-            self.middleware.clone(),
-        )
-        .await
+        let pair_address = {
+            if let Some(inner_map) = self.uniswap_v2_pairs.get(token0) {
+                if inner_map.get(token1).is_some() {
+                    inner_map[token1]
+                } else {
+                    self.uniswap_v2_factory
+                        .get_pair_address(
+                            self.middleware.clone(),
+                            self.tokens[token0],
+                            self.tokens[token1],
+                        )
+                        .await
+                }
+            } else {
+                self.uniswap_v2_factory
+                    .get_pair_address(
+                        self.middleware.clone(),
+                        self.tokens[token0],
+                        self.tokens[token1],
+                    )
+                    .await
+            }
+        };
+        UniswapV2Pool::new_from_address(pair_address, 300, self.middleware.clone()).await
     }
 
     fn load_tokens() -> HashMap<String, H160> {

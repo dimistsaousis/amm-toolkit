@@ -53,6 +53,19 @@ impl UniswapV2Factory {
         IUniswapV2Factory::new(self.address, middleware)
     }
 
+    pub async fn get_pair_address<M: Middleware>(
+        &self,
+        middleware: Arc<M>,
+        token0: H160,
+        token1: H160,
+    ) -> H160 {
+        self.contract(middleware)
+            .get_pair(token0, token1)
+            .call()
+            .await
+            .unwrap()
+    }
+
     async fn get_pool_addresses_from_logs_range<M: Middleware>(
         &self,
         start_block: u64,
