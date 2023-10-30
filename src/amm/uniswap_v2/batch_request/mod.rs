@@ -34,11 +34,9 @@ pub async fn get_uniswap_v2_pool_data_batch_request_single<M: Middleware>(
     }
 }
 
-pub async fn get_uniswap_v2_pool_data_batch_request<M: Middleware>(
-    pair_addresses: &Vec<H160>,
-    fee: u32,
-    middleware: Arc<M>,
-) -> Result<Vec<UniswapV2Pool>, AMMError<M>> {
+struct TokenHelper;
+
+impl TokenHelper {
     fn token_to_address(token: &Token, address: H160) -> H160 {
         token.to_owned().into_address().expect(&format!(
             "Expected addresses for token and address {:?}",
@@ -67,17 +65,23 @@ pub async fn get_uniswap_v2_pool_data_batch_request<M: Middleware>(
     fn token_to_uniswap_pool(token: &Token, address: H160, fee: u32) -> UniswapV2Pool {
         let tup = &token.clone().into_tuple().unwrap();
         UniswapV2Pool {
-            token_a: token_to_address(&tup[0], address),
-            token_a_decimals: token_to_u::<u8>(&tup[1], address),
-            token_b: token_to_address(&tup[2], address),
-            token_b_decimals: token_to_u::<u8>(&tup[3], address),
-            reserve_0: token_to_u::<u128>(&tup[4], address),
-            reserve_1: token_to_u::<u128>(&tup[5], address),
+            token_a: TokenHelper::token_to_address(&tup[0], address),
+            token_a_decimals: TokenHelper::token_to_u::<u8>(&tup[1], address),
+            token_b: TokenHelper::token_to_address(&tup[2], address),
+            token_b_decimals: TokenHelper::token_to_u::<u8>(&tup[3], address),
+            reserve_0: TokenHelper::token_to_u::<u128>(&tup[4], address),
+            reserve_1: TokenHelper::token_to_u::<u128>(&tup[5], address),
             address,
             fee,
         }
     }
+}
 
+pub async fn get_uniswap_v2_pool_data_batch_request<M: Middleware>(
+    pair_addresses: &Vec<H160>,
+    fee: u32,
+    middleware: Arc<M>,
+) -> Result<Vec<UniswapV2Pool>, AMMError<M>> {
     let target_addresses: Vec<Token> = pair_addresses
         .iter()
         .map(|&address| Token::Address(address))
@@ -109,7 +113,11 @@ pub async fn get_uniswap_v2_pool_data_batch_request<M: Middleware>(
         .into_iter()
         .enumerate()
         .for_each(|(idx, token)| {
-            pools.push(token_to_uniswap_pool(&token, pair_addresses[idx], fee));
+            pools.push(TokenHelper::token_to_uniswap_pool(
+                &token,
+                pair_addresses[idx],
+                fee,
+            ));
         });
 
     Ok(pools)
