@@ -69,12 +69,15 @@ impl UniswapV2Pool {
         }
     }
 
+    pub fn contract<M: Middleware>(&self, middleware: Arc<M>) -> IUniswapV2Pair<M> {
+        IUniswapV2Pair::new(self.address, middleware)
+    }
+
     pub async fn get_reserves<M: Middleware>(
         &self,
         middleware: Arc<M>,
     ) -> Result<(u128, u128), AMMError<M>> {
-        let pair = IUniswapV2Pair::new(self.address, middleware);
-        let (r0, r1, _) = match pair.get_reserves().call().await {
+        let (r0, r1, _) = match self.contract(middleware).get_reserves().call().await {
             Ok(result) => result,
             Err(contract_error) => return Err(AMMError::ContractError(contract_error)),
         };

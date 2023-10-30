@@ -20,71 +20,18 @@ abigen!(
 );
 
 pub async fn get_uniswap_v2_pool_data_batch_request_single<M: Middleware>(
-    pair_address: H160,
+    pool_address: H160,
     fee: u32,
     middleware: Arc<M>,
 ) -> Result<UniswapV2Pool, AMMError<M>> {
-    let constructor_args = Token::Tuple(vec![Token::Array(vec![Token::Address(pair_address)])]);
-    let deployer = IGetUniswapV2PoolDataBatchRequest::deploy(middleware.clone(), constructor_args)?;
-    let return_data: Bytes = deployer.call_raw().await?;
-    let return_data_tokens = ethers::abi::decode(
-        &[ParamType::Array(Box::new(ParamType::Tuple(vec![
-            ParamType::Address,   // token a
-            ParamType::Uint(8),   // token a decimals
-            ParamType::Address,   // token b
-            ParamType::Uint(8),   // token b decimals
-            ParamType::Uint(112), // reserve 0
-            ParamType::Uint(112), // reserve 1
-        ])))],
-        &return_data,
-    )?;
+    let pools =
+        get_uniswap_v2_pool_data_batch_request(&vec![pool_address], fee, middleware).await?;
 
-    let tokens = return_data_tokens
-        .into_iter()
-        .next()
-        .ok_or(AMMError::<M>::BatchRequestError(pair_address))?
-        .into_array()
-        .ok_or(AMMError::<M>::BatchRequestError(pair_address))?
-        .into_iter()
-        .next()
-        .ok_or(AMMError::<M>::BatchRequestError(pair_address))?
-        .into_tuple()
-        .ok_or(AMMError::<M>::BatchRequestError(pair_address))?;
-
-    let pool = UniswapV2Pool {
-        token_a: tokens[0]
-            .to_owned()
-            .into_address()
-            .ok_or(AMMError::<M>::BatchRequestError(pair_address))?,
-        token_a_decimals: tokens[1]
-            .to_owned()
-            .into_uint()
-            .ok_or(AMMError::<M>::BatchRequestError(pair_address))?
-            .as_u32() as u8,
-        token_b: tokens[2]
-            .to_owned()
-            .into_address()
-            .ok_or(AMMError::<M>::BatchRequestError(pair_address))?,
-        token_b_decimals: tokens[3]
-            .to_owned()
-            .into_uint()
-            .ok_or(AMMError::<M>::BatchRequestError(pair_address))?
-            .as_u32() as u8,
-        reserve_0: tokens[4]
-            .to_owned()
-            .into_uint()
-            .ok_or(AMMError::<M>::BatchRequestError(pair_address))?
-            .as_u128(),
-        reserve_1: tokens[5]
-            .to_owned()
-            .into_uint()
-            .ok_or(AMMError::<M>::BatchRequestError(pair_address))?
-            .as_u128(),
-        address: pair_address,
-        fee,
-    };
-
-    Ok(pool)
+    if let Some(pool) = pools.get(0) {
+        Ok(pool.clone())
+    } else {
+        Err(AMMError::<M>::BatchRequestError(pool_address))
+    }
 }
 
 pub async fn get_uniswap_v2_pool_data_batch_request<M: Middleware>(
