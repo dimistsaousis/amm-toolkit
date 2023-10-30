@@ -1,6 +1,7 @@
 pub mod batch_request;
 pub mod factory;
 pub mod sync;
+
 use std::sync::Arc;
 
 use ethers::{

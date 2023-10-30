@@ -2,10 +2,10 @@ use ethers::types::{H160, U256};
 use std::str::FromStr;
 
 use crate::{
-    amm::uniswap_v2::{
+    configs::Config,
+    uniswap_v2::{
         batch_request::get_weth_value_in_pools, sync::sync_uniswap_v2_pools, UniswapV2Pool,
     },
-    configs::Config,
 };
 
 pub async fn simulate_swaps() -> eyre::Result<()> {

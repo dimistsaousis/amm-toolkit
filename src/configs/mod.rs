@@ -7,9 +7,9 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::{collections::HashMap, fs};
 
-use crate::amm::uniswap_v2::factory::UniswapV2Factory;
-use crate::amm::uniswap_v2::UniswapV2Pool;
 use crate::errors::AMMError;
+use crate::uniswap_v2::factory::UniswapV2Factory;
+use crate::uniswap_v2::UniswapV2Pool;
 
 #[derive(Debug)]
 pub enum ConfigError {
