@@ -59,6 +59,8 @@ where
     BatchRequestError(H160),
     #[error("Checkpoint error")]
     CheckpointError(#[from] CheckpointError),
+    #[error("Out of gas error")]
+    OutOfGasError(Vec<H160>),
 }
 
 #[derive(Error, Debug)]
