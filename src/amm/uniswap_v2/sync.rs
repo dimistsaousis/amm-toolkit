@@ -90,5 +90,5 @@ async fn sync_uniswap_v2_pools_from_checkpoint<M: Middleware>(
     checkpoint.block_number = end_block;
     checkpoint.timestamp = chrono::Utc::now().timestamp() as usize;
     checkpoint.save_to_path("uniswap_v2_pairs")?;
-    Ok(new_pools)
+    Ok(checkpoint.pools)
 }
