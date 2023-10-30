@@ -5,7 +5,8 @@ use ethers::{
 use std::{str::FromStr, sync::Arc};
 
 use crate::amm::uniswap_v2::{
-    factory::UniswapV2Factory, sync::sync_uniswap_v2_pools, UniswapV2Pool,
+    batch_request::get_weth_value_in_pools, factory::UniswapV2Factory, sync::sync_uniswap_v2_pools,
+    UniswapV2Pool,
 };
 
 pub async fn simulate_swaps() -> eyre::Result<()> {
@@ -77,5 +78,25 @@ pub async fn run_sync_uniswap_v2_pools() -> eyre::Result<()> {
     let factory = UniswapV2Factory::new(uniswap_v2_factory, 10000835, 300);
     let pools = sync_uniswap_v2_pools(factory, middleware).await?;
     println!("Got {:?}", pools.len());
+    Ok(())
+}
+
+pub async fn get_top10_pools_in_terms_of_weth_equivalent_value() -> eyre::Result<()> {
+    let rpc_endpoint = std::env::var("NETWORK_RPC")?;
+    let middleware = Arc::new(Provider::<Http>::try_from(rpc_endpoint)?);
+    let uniswap_v2_factory = H160::from_str("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f")?;
+    let factory = UniswapV2Factory::new(uniswap_v2_factory, 10000835, 300);
+    let weth_address = H160::from_str("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2")?;
+    let pools = sync_uniswap_v2_pools(factory, middleware.clone()).await?;
+    let pool_addresses = pools.into_iter().map(|pool| pool.address).collect();
+    let weth_values_in_pools_batch = get_weth_value_in_pools(
+        pool_addresses,
+        weth_address,
+        uniswap_v2_factory,
+        middleware.clone(),
+        Some(50),
+    )
+    .await?;
+    println!("Got {} number of pools", weth_values_in_pools_batch.len());
     Ok(())
 }
