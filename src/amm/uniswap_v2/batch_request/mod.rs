@@ -16,7 +16,9 @@ abigen!(
     IGetUniswapV2PoolDataBatchRequest,
     "src/amm/uniswap_v2/batch_request/GetUniswapV2PoolDataBatchRequest.json";
     IGetUniswapV2PairsBatchRequest,
-    "src/amm/uniswap_v2/batch_request/GetUniswapV2PairsBatchRequest.json",
+    "src/amm/uniswap_v2/batch_request/GetUniswapV2PairsBatchRequest.json";
+    GetWethValueInPoolBatchRequest,
+    "src/amm/uniswap_v2/batch_request/GetWethValueInPoolBatchRequest.json";
 );
 
 pub async fn get_uniswap_v2_pool_data_batch_request_single<M: Middleware>(
@@ -163,6 +165,41 @@ pub async fn get_uniswap_v2_pairs_batch_request<M: Middleware>(
     Ok(pairs)
 }
 
+pub async fn get_weth_value_in_pool_batch_request<M: Middleware>(
+    addresses: Vec<H160>,
+    weth_address: H160,
+    factory_address: H160,
+    middleware: Arc<M>,
+) -> Result<Vec<U256>, AMMError<M>> {
+    let addresses: Vec<Token> = addresses
+        .iter()
+        .map(|&address| Token::Address(address))
+        .collect();
+    let constructor_args = Token::Tuple(vec![
+        Token::Array(addresses),
+        Token::Address(weth_address),
+        Token::Address(factory_address),
+    ]);
+    let deployer = GetWethValueInPoolBatchRequest::deploy(middleware.clone(), constructor_args)?;
+    let return_data: Bytes = deployer.call_raw().await?;
+    let return_data_tokens = ethers::abi::decode(
+        &[ParamType::Array(Box::new(ParamType::Uint(256)))],
+        &return_data,
+    )?;
+
+    let mut weth_values_in_pools = vec![];
+    for token_array in return_data_tokens {
+        if let Some(arr) = token_array.into_array() {
+            for token in arr {
+                if let Some(weth_value_in_pool) = token.into_uint() {
+                    weth_values_in_pools.push(weth_value_in_pool / U256::exp10(18));
+                }
+            }
+        }
+    }
+    Ok(weth_values_in_pools)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -258,5 +295,24 @@ mod tests {
             assert!(pool2.reserve_1 > 0);
             assert!(pool2.fee == 300);
         }
+    }
+
+    #[tokio::test]
+    async fn test_get_weth_value_in_pool_batch_request() {
+        dotenv::dotenv().ok();
+        let rpc_endpoint = std::env::var("NETWORK_RPC").expect("Missing NETWORK_RPC env variable");
+        let middleware = Arc::new(Provider::<Http>::try_from(rpc_endpoint).unwrap());
+        let addresses = vec![
+            H160::from_str("0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc").unwrap(), // WETH<>USDc
+        ];
+        let weth = H160::from_str("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2").unwrap();
+        let factory = H160::from_str("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f").unwrap();
+
+        let r = get_weth_value_in_pool_batch_request(addresses, weth, factory, middleware)
+            .await
+            .unwrap();
+
+        println!("{:?}", r);
+        assert!(false);
     }
 }
