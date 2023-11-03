@@ -9,5 +9,7 @@ async fn main() {
     // playground::get_pools_from_log().await.unwrap();
     // playground::get_all_pools().await.unwrap();
     // playground::run_sync_uniswap_v2_pools().await.unwrap();
-    playground::get_weth_equivalent().await.unwrap();
+    playground::get_top_pools_in_terms_of_weth_equivalent_value(20)
+        .await
+        .unwrap();
 }
