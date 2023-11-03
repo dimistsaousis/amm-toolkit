@@ -79,7 +79,7 @@ pub async fn run_sync_uniswap_v2_pools() -> eyre::Result<()> {
     Ok(())
 }
 
-pub async fn get_top10_pools_in_terms_of_weth_equivalent_value() -> eyre::Result<()> {
+pub async fn get_top_pools_in_terms_of_weth_equivalent_value(top: usize) -> eyre::Result<()> {
     let config = Config::new()?;
     let pools =
         sync_uniswap_v2_pools(config.uniswap_v2_factory.clone(), config.middleware.clone()).await?;
@@ -95,10 +95,11 @@ pub async fn get_top10_pools_in_terms_of_weth_equivalent_value() -> eyre::Result
 
     let mut entries: Vec<_> = map.iter().collect();
     entries.sort_by(|a, b| b.1.cmp(a.1)); // Sort by value in descending order
-    let top_10: Vec<_> = entries.into_iter().take(10).collect();
+    let top: Vec<_> = entries.into_iter().take(top).collect();
 
-    for (key, value) in top_10 {
-        println!("{:?}: {:?}", key, value);
+    for (key, value) in top {
+        let eth_value = value / U256::exp10(18);
+        println!("{:?}: {:?}", key, eth_value);
     }
     Ok(())
 }
