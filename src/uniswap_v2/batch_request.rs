@@ -184,8 +184,8 @@ async fn get_weth_value_in_pool_batch_request<M: Middleware>(
         .collect();
     let constructor_args = Token::Tuple(vec![
         Token::Array(addresses_token),
-        Token::Address(weth_address),
         Token::Address(factory_address),
+        Token::Address(weth_address),
     ]);
     let deployer = GetWethValueInPoolBatchRequest::deploy(middleware.clone(), constructor_args)?;
     let return_data: Bytes = deployer
